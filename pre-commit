@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# Source: https://github.com/archikrator/ansible-bootstrap/blob/master/.githooks/pre-commit
+#
+# This script prevents you from inadvertently making a commit with unencrypted passwords
+#
+# Usage: Put this file into .git/hooks in your git repository.
+#
+
+FILES_PATTERN='vault_.*'
+REQUIRED='ANSIBLE_VAULT'
+UNENCRYPTED=0
+
+EXIT_STATUS=0
+wipe="\033[1m\033[0m"
+yellow='\033[1;33m'
+cr='
+'
+
+FILES_IN_COMMIT=$(git diff --cached --name-only | grep -E $FILES_PATTERN)
+
+ansible-lint $FILES_IN_COMMIT || EXIT_STATUS=1
+
+for f in $FILES_IN_COMMIT
+do
+  MATCH=`head -n1 $f | grep --no-messages $REQUIRED`
+  if [ ! $MATCH ] ; then
+    UNENCRYPTED_FILES="$f$cr$UNENCRYPTED_FILES"
+    UNENCRYPTED=1
+  fi
+done
+if [ ! $UNENCRYPTED = 0 ] ; then
+  echo '# DECRYPTED VAULT FILES DETECTED'
+  echo '# All decrypted vault files will by encrypted:'
+  echo '#'
+  while read -r line; do
+    if [ -n "$line" ]; then
+      echo -e "#\t${yellow}encrypting... $line${wipe}"
+      ansible-vault encrypt $line &> /dev/null
+      git add $line
+    fi
+  done <<< "$UNENCRYPTED_FILES"
+  echo '#'
+  exit $EXIT_STATUS
+fi
+exit $EXIT_STATUS
